@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phonics City: Digraph Drive</title>
+    <style>
+        :root {
+            --road-color: #444;
+            --grass-color: #27ae60;
+            --sky-color: #87CEEB;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--sky-color);
+            text-align: center;
+            overflow-x: hidden;
+        }
+
+        #header {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        #game-world {
+            position: relative;
+            height: 300px;
+            background-color: var(--grass-color);
+            margin-top: 50px;
+            border-top: 10px solid #2ecc71;
+            overflow: hidden;
+        }
+
+        #road {
+            position: absolute;
+            bottom: 50px;
+            width: 100%;
+            height: 100px;
+            background-color: var(--road-color);
+            border-top: 4px dashed white;
+            border-bottom: 4px dashed white;
+        }
+
+        /* THE CAR WITH FIXES */
+        #car {
+            position: absolute;
+            bottom: 60px;
+            left: 50px;
+            font-size: 60px;
+            transition: left 1s ease-in-out;
+            z-index: 10;
+            /* Flip car to face right and add vibration */
+            transform: scaleX(-1); 
+            animation: driveVibration 0.2s infinite;
+        }
+
+        @keyframes driveVibration {
+            0% { transform: scaleX(-1) translateY(0px); }
+            50% { transform: scaleX(-1) translateY(-2px); }
+            100% { transform: scaleX(-1) translateY(0px); }
+        }
+
+        .obstacle {
+            position: absolute;
+            bottom: 60px;
+            font-size: 50px;
+            transition: opacity 0.5s;
+        }
+
+        #ui-layer { padding: 20px; }
+
+        #sentence-box {
+            background: white;
+            display: inline-block;
+            padding: 20px 40px;
+            border-radius: 50px;
+            font-size: 32px;
+            margin: 20px;
+            border: 4px solid #3498db;
+            min-width: 400px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .highlight { color: #e74c3c; text-decoration: underline; font-weight: bold; }
+
+        button {
+            padding: 15px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            border-radius: 50px;
+            border: none;
+            background: #e67e22;
+            color: white;
+            box-shadow: 0 5px #d35400;
+            margin: 10px;
+        }
+
+        button:active { transform: translateY(3px); box-shadow: 0 2px #d35400; }
+        
+        #restart-btn { background: #3498db; box-shadow: 0 5px #2980b9; display: none; }
+
+        #feedback { font-size: 22px; margin-top: 15px; font-weight: bold; height: 30px; }
+        .success { color: #1e8449; }
+        .error { color: #c0392b; }
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <h1>🏙️ Phonics City: Digraph Drive</h1>
+        <p>Master your <b>sh, ch, th, ph</b> sounds!</p>
+        <h2>Score: <span id="score">0</span></h2>
+    </div>
+
+    <div id="game-world">
+        <div id="road"></div>
+        <div id="car">🚗</div>
+        <div id="obstacles"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="sentence-box">Loading...</div>
+        <div id="controls">
+            <button id="mic-btn">🎤 HOLD TO SPEAK</button>
+            <button id="restart-btn">🔄 PLAY AGAIN</button>
+        </div>
+        <div id="feedback"></div>
+    </div>
+
+    <script>
+        const levels = [
+            { digraph: "sh", sentence: "The ship is in the shop", words: ["ship", "shop"] },
+            { digraph: "ch", sentence: "The chicken has a chin", words: ["chicken", "chin"] },
+            { digraph: "th", sentence: "The moth is on the path", words: ["moth", "path"] },
+            { digraph: "ph", sentence: "The dolphin is on the phone", words: ["dolphin", "phone"] }
+        ];
+
+        let currentLevel = 0;
+        let score = 0;
+
+        const car = document.getElementById('car');
+        const sentenceBox = document.getElementById('sentence-box');
+        const feedback = document.getElementById('feedback');
+        const scoreDisplay = document.getElementById('score');
+        const micBtn = document.getElementById('mic-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const obstacleContainer = document.getElementById('obstacles');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+
+        function loadLevel() {
+            if (currentLevel >= levels.length) {
+                endGame();
+                return;
+            }
+            const data = levels[currentLevel];
+            let displayHeader = data.sentence.replace(new RegExp(data.digraph, 'gi'), 
+                (match) => `<span class="highlight">${match}</span>`);
+            
+            sentenceBox.innerHTML = displayHeader;
+            createObstacle();
+        }
+
+        function createObstacle() {
+            obstacleContainer.innerHTML = '';
+            const cone = document.createElement('div');
+            cone.className = 'obstacle';
+            cone.innerHTML = '🚧';
+            // Place obstacle ahead of the car
+            const carPos = parseInt(car.style.left) || 50;
+            cone.style.left = (carPos + 250) + 'px';
+            obstacleContainer.appendChild(cone);
+        }
+
+        micBtn.onmousedown = () => {
+            recognition.start();
+            feedback.innerText = "Listening...";
+        };
+
+        micBtn.onmouseup = () => { recognition.stop(); };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.toLowerCase();
+            const data = levels[currentLevel];
+            
+            // Success if they say the whole sentence OR both target words
+            const saidKeywords = data.words.every(word => transcript.includes(word));
+
+            if (transcript.includes(data.sentence.toLowerCase()) || saidKeywords) {
+                feedback.innerHTML = "<span class='success'>Perfect Pronunciation! 🎉</span>";
+                winLevel();
+            } else {
+                feedback.innerHTML = `<span class='error'>I heard "${transcript}". Try again!</span>`;
+            }
+        };
+
+        function winLevel() {
+            score += 10;
+            scoreDisplay.innerText = score;
+            
+            // Move car forward
+            let currentPos = parseInt(car.style.left) || 50;
+            car.style.left = (currentPos + 250) + "px";
+            
+            // Hide the obstacle (cone)
+            if(obstacleContainer.firstChild) obstacleContainer.firstChild.style.opacity = "0";
+
+            currentLevel++;
+            setTimeout(loadLevel, 1500);
+        }
+
+        function endGame() {
+            sentenceBox.innerHTML = "🏆 CITY TRIP COMPLETE!";
+            feedback.innerText = "Final Score: " + score;
+            micBtn.style.display = "none";
+            restartBtn.style.display = "inline-block";
+        }
+
+        restartBtn.onclick = () => {
+            currentLevel = 0;
+            score = 0;
+            scoreDisplay.innerText = "0";
+            car.style.left = "50px";
+            micBtn.style.display = "inline-block";
+            restartBtn.style.display = "none";
+            feedback.innerText = "";
+            loadLevel();
+        };
+
+        // Start game
+        loadLevel();
+    </script>
+</body>
+</html>
